@@ -31,7 +31,7 @@ Welcome to Intranet Explorer v0.2
     
     term.setCursorPos(1,2)
     
-    print("Search | Request | Help | eXit")
+    print("Search | Request | Help | List | eXit")
     term.setBackgroundColor(colors.black)
 end
     
@@ -59,6 +59,13 @@ local function load_page()
         printError("404 not found")
     else
         for i = 1, 16 do
+        if page_colors == nil then 
+            term.setTextColor(colors.white)
+        else
+            local line_color = page_colors[i + scroll_offset]
+            term.setTextColor(tonumber(line_color) or colors.white)
+            
+        end
             local page_line = page[i + scroll_offset]
             if page_line then print(page_line) else break end
         end
@@ -68,6 +75,9 @@ local function load_page()
     
     if not page then
         --nothing
+    elseif page == index then
+        request_page("home")
+    
     else
         term.setBackgroundColor(colors.gray)
         paintutils.drawLine(11,3, 11,18)
@@ -92,6 +102,7 @@ local function request_page(page_request)
     page = nil
     rednet.send(search_id, page_request, "intranet")
     page_id, page = rednet.receive("intranet", 5)
+    page_id, page_colors = rednet.receive("intranet", 1)
     load_page()
 end
     
@@ -105,6 +116,7 @@ local function connection()
     header()
     write_index()
     request_page("home")
+
 end
 
 local function request()
@@ -156,9 +168,7 @@ local function search()
         end
     local lookup_id = nil
     end
-end
-
-
+end     
 
 
 header()
@@ -202,6 +212,7 @@ while true do
     elseif key == keys.pageDown then
         scroll_offset = #page - 16
         load_page()
+    elseif key == keys.l then
         
     else
         write("")
