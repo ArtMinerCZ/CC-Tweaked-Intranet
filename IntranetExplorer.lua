@@ -2,7 +2,7 @@ rednet.open("left")
 
 --defined header
 original_term = term.current()
-local version = "v0.2"
+local version = "v0.3"
 local index = nil
 local page = nil
 local search_id = nil
@@ -15,7 +15,7 @@ local function header()
     if first_time then
         term.setCursorPos(13,4)
         print([[
-Welcome to Intranet Explorer v0.2
+Welcome to Intranet Explorer v0.3
         
               start by pressing S to search
         
