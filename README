@@ -1,0 +1,4 @@
+This project aims to create the base of Internet in Minecraft by using CC Tweaked
+
+The repository contains 2 lua files - intranetexplorer.lua and startup.lua
+The first serves as a basic Web browser, the latter is used for site hosting. 
