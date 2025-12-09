@@ -2,12 +2,23 @@ rednet.open("left")
 
 --defined header
 original_term = term.current()
-local version = "v0.3"
+local version = "v1.0"
 local index = nil
 local page = nil
 local search_id = nil
+
+local site_name = nil
+local page_name = nil
+
+local address = nil
+
 scroll_offset = 0
 
+local function send_message(id, type, message)
+    local payload = {type, message}
+    rednet.send(id, payload, "intranet")
+end
+    
 local first_time = true
 local function header()
     term.clear()
@@ -15,24 +26,33 @@ local function header()
     if first_time then
         term.setCursorPos(13,4)
         print([[
-Welcome to Intranet Explorer v0.3
+Welcome to Intranet Explorer v1.0
         
-              start by pressing S to search
-        
+              start by pressing ; (grave)
+              to access the address bar
+                              
               made by ArtMinerCZ]])
         
         first_time = false
     end
     
     term.setCursorPos(0, 1)
-    print((">Intranet Explorer %s"):format(version))
+    print((">IE %s"):format(version))
     paintutils.drawLine(11,3, 11, 20, colors.gray)
+    
+    term.setBackgroundColor(colors.red)
+    term.setCursorPos(9,1)
+    print("<>")
+    
     paintutils.drawLine(1,2, 51,2, colors.blue)
+    
     
     term.setCursorPos(1,2)
     
-    print("Search | Request | Help | List | eXit")
+    print("| Reload | Help | List | eXit |")
     term.setBackgroundColor(colors.black)
+    term.setCursorPos(11,1)
+    print("|________________________________________")
 end
     
 local function write_index()
@@ -47,8 +67,8 @@ local function write_index()
 end
 
 local function load_page()
-   -- rednet.send(search_id, page_request, "intranet")
-   -- page_id, page = rednet.receive("intranet", 10)
+ 
+  
     
     page_window = window.create(term.current(),12,3,51,18)
     term.redirect(page_window)
@@ -98,101 +118,75 @@ local function load_page()
         
 end
 
-local function request_page(page_request)
-    page = nil
-    rednet.send(search_id, page_request, "intranet")
-    page_id, page = rednet.receive("intranet", 5)
-    page_id, page_colors = rednet.receive("intranet", 1)
-    load_page()
-end
-    
-local function connection()
-    search_id = rednet.lookup("intranet", query)
-    rednet.send(search_id, "index", "intranet")
-    receive_id, index = rednet.receive("intranet", 5)
-    --local receive_id, page = rednet.receive()
-    
-    --writing index
-    header()
-    write_index()
-    request_page("home")
+local function address_bar()
 
-end
 
-local function request()
+    term.redirect(original_term)
     header()
-    write_index()
-    
-    term.setCursorPos(12,3)
-    print("Type in your page request, from index")
-    term.setCursorPos(13,4)
-    local request = read()
-    request_page(request)
-end
-
-local function search()
-    header()
-    term.setCursorPos(12,3)
-    print("Type in your search request:")
-    
-    term.setCursorPos(13,4)
-    search_id = nil
-    query = read()
-    local lookup_id = rednet.lookup("intranet", query)
-    --failsaft
-    search_id = lookup_id
-    
-    if not lookup_id then
-        printError("404 not found")
-        sleep(2)
-        header()
-        
-    else
-    
-        term.setCursorPos(12,6)
-        print(("Found %s at address %d"):format(query, search_id))
-        term.setCursorPos(12,7)
-        print("Proceed to connection? Y/N")
-        term.setCursorPos(12,8)
-        local event, key = os.pullEvent("key")
-        if key == keys.y then
-            textutils.slowPrint("Connecting...",50)
-            connection()
-        elseif key == keys.z then
-            textutils.slowPrint("Connecting...",50)
-            connection()
-        else
-            print("Connecting canceled")
-            sleep(2)
-            header()
-        end
-    local lookup_id = nil
+    if index then
+        write_index()
     end
-end     
-
-
+    
+    term.setTextColor(colors.lightGray)
+    term.setCursorPos(12,1)
+    address = read()
+    term.setTextColor(colors.white)
+    
+    local address_table = {}
+    for address_element in string.gmatch(address, "[^/]+") do
+        table.insert(address_table, address_element)
+    end
+    
+    local site_id = rednet.lookup("intranet", address_table[1])
+    
+    --default page "home"
+    if address_table[2] == nil then
+        address_table[2] = "home"
+    end
+    local previous_site = nil
+    
+    if address_table[1] == previous_site then
+    else
+        --request index and print index
+        send_message(site_id, "page_request", "index")
+        local site_id, received_payload = rednet.receive("intranet",5)
+        index = received_payload[2]
+        write_index()
+    end
+    local previous_site = address_table[1]
+    
+    --request page
+    send_message(site_id, "page_request", address_table[2])
+    local site_id, received_payload = rednet.receive("intranet", 5)
+    page = received_payload[2]
+    page_colors = received_payload[3]
+    received_payload = nil
+    load_page()
+    
+       
+end  
 header()
 
+
+
 --looks for keystrokes
+local function keystrokes()
 while true do
     local event, key = os.pullEvent("key")
         
     if key == keys.s then
-        --initiates web lookout
-            
-        search(query)
+
     elseif key == keys.r then
-        --initiates web request, requires found web
-        if not receive_id then
-            printError("Missing connection")
-            sleep(2)
-            header()
-        else
-            request()
-        end
+        --Reload
+        scroll_offset = 0
+        write_index()
+        load_page()
+        
+        
+        
     elseif key == keys.x then
         term.clear()
-        error("Program ended", 0)
+        return false
     --scrolling up
     elseif key == keys.up then
         if scroll_offset == 0 then
@@ -212,10 +206,13 @@ while true do
     elseif key == keys.pageDown then
         scroll_offset = #page - 16
         load_page()
-    elseif key == keys.l then
-        
+    elseif key == keys.grave then
+        address_bar()    
     else
         write("")
     end 
 end
+end
+
+keystrokes()
 
