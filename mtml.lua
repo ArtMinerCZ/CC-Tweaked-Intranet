@@ -70,14 +70,11 @@ function tokenize_tag(lexer_state)
   end
   tag.name = tag_name
 
+  skip_whitespace(lexer_state)
   local err = tokenize_tag_attributes(lexer_state, tag)
   if err then return err end
 
-  if lexer_state.current_char() == "/" then
-    tag.self_closing = true
-    lexer_state.next()
-  end
-
+  skip_whitespace(lexer_state)
   if lexer_state.current_char() ~= ">" then
     return lexer_state.error "Invalid tag end"
   end
@@ -92,11 +89,11 @@ function tokenize_tag(lexer_state)
 end
 
 function tokenize_tag_attributes(lexer_state, tag)
-  skip_whitespace(lexer_state)
   local current_char = lexer_state.current_char()
   if current_char == ">" then return end
 
   if current_char == "/" then
+    tag.self_closing = true
     lexer_state.next()
     return
   end
@@ -111,6 +108,7 @@ function tokenize_tag_attributes(lexer_state, tag)
       return lexer_state.error "Expected attribute"
     end
 
+    skip_whitespace(lexer_state)
     if lexer_state.current_char() ~= "=" then
       return lexer_state.error "Expected '='"
     end
@@ -128,8 +126,11 @@ function tokenize_tag_attributes(lexer_state, tag)
 
     local current_char = lexer_state.current_char()
 
-    if current_char == ">" then break end
-    if current_char == "/" then break end
+    if current_char == ">" then return end
+    if current_char == "/" then
+      lexer_state.next()
+      return
+    end
 
     if current_char ~= "," then
       return lexer_state.error "Expected comma between attributes"
@@ -147,9 +148,11 @@ function next_attribute_value(lexer_state)
       lexer_state.next()
     end
   elseif current_char == "\"" then
-    repeat
+    lexer_state.next()
+    while lexer_state:current_char() ~= "\"" do
       lexer_state.next()
-    until lexer_state:current_char() ~= "\""
+    end
+    lexer_state.next()
   end
   if start == lexer_state.idx then
     return nil, lexer_state.error "Expected attribute value"
@@ -194,6 +197,7 @@ function next_word(lexer_state)
   if start == lexer_state.idx then return nil end
   return lexer_state.mtml:sub(start, lexer_state.idx - 1)
 end
+
 
 ---Renders the page to the given terminal with the set scroll amount
 ---@param term table
