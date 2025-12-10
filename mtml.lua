@@ -6,6 +6,8 @@ local mod = {}
 function mod.parse_mtml(mtml)
   if type(mtml) ~= "string" then return nil, "String expected got " .. type(mtml) .. " instead" end
   local tokens, err = lex(mtml)
+  if err then return nil, err end
+  return tokens
 end
 
 function lex(mtml)
@@ -32,7 +34,7 @@ function lex(mtml)
     return "[" .. lexer_state.line_number .. ":" .. column .. "] " .. msg
   end
 
-  while lexer_state.next() do
+  while lexer_state.idx <= lexer_state.len do
     if lexer_state.current_char() == "<" then
       local err = tokenize_tag(lexer_state)
       if err then return nil, err end
@@ -41,10 +43,11 @@ function lex(mtml)
       if err then return nil, err end
     end
   end
+
+  return lexer_state.tokens
 end
 
 function tokenize_tag(lexer_state)
-  local tag_start = lexer_state.idx
   local tag = {
     closing = false,
     self_closing = false,
@@ -65,33 +68,40 @@ function tokenize_tag(lexer_state)
   if not tag_name then
     return lexer_state.error "Expected tag name"
   end
+  tag.name = tag_name
 
   local err = tokenize_tag_attributes(lexer_state, tag)
   if err then return err end
 
   if lexer_state.current_char() == "/" then
     tag.self_closing = true
+    lexer_state.next()
   end
+
+  if lexer_state.current_char() ~= ">" then
+    return lexer_state.error "Invalid tag end"
+  end
+
+  lexer_state.next()
 
   if tag.closing and tag.self_closing then
     return lexer_state.error "Invalid self-closing tag"
   end
+
+  table.insert(lexer_state.tokens, tag)
 end
 
 function tokenize_tag_attributes(lexer_state, tag)
   skip_whitespace(lexer_state)
   local current_char = lexer_state.current_char()
-  if
-    current_char == ">" or
-    current_char == "/"
-  then return end
+  if current_char == ">" then return end
+
+  if current_char == "/" then
+    lexer_state.next()
+    return
+  end
 
   while true do
-    local attribute = {
-      name = "",
-      value = "",
-    }
-    
     if not current_char then
       return lexer_state.error "Unclosed tag"
     end
@@ -110,27 +120,26 @@ function tokenize_tag_attributes(lexer_state, tag)
     end
 
     skip_whitespace(lexer_state)
-    local err = next_attribute_value(lexer_state, attribute)
+    local attribute_value, err = next_attribute_value(lexer_state)
     if err then return err end
+    tag.attributes[attribute_name] = attribute_value
+
     skip_whitespace(lexer_state)
 
     local current_char = lexer_state.current_char()
 
     if current_char == ">" then break end
-    if current_char == "/" then end
+    if current_char == "/" then break end
 
     if current_char ~= "," then
       return lexer_state.error "Expected comma between attributes"
     end
 
     skip_whitespace(lexer_state)
-
-    attribute.name = attribute_name
-    table.insert(tag.attributes, attribute)
   end
 end
 
-function next_attribute_value(lexer_state, attribute)
+function next_attribute_value(lexer_state)
   local start = lexer_state.idx
   local current_char = lexer_state.current_char()
   if current_char:find("%d") then
@@ -138,19 +147,19 @@ function next_attribute_value(lexer_state, attribute)
       lexer_state.next()
     end
   elseif current_char == "\"" then
-    while lexer_state:current_char() ~= "\"" do
+    repeat
       lexer_state.next()
-    end
+    until lexer_state:current_char() ~= "\""
   end
   if start == lexer_state.idx then
-    return lexer_state.error "Expected attribute value"
+    return nil, lexer_state.error "Expected attribute value"
   end
-  attribute.value = lexer_state.mtml:sub(start, lexer_state.idx - 1)
+  return lexer_state.mtml:sub(start, lexer_state.idx - 1)
 end
 
 function tokenize_chunk(lexer_state)
   local start = lexer_state.idx
-  while true do
+  while lexer_state.idx <= lexer_state.len do
     if not lexer_state.current_char() then break end
     if lexer_state.current_char() == "<" then break end
 
@@ -161,6 +170,8 @@ function tokenize_chunk(lexer_state)
 
     lexer_state.next()
   end
+
+  table.insert(lexer_state.tokens, lexer_state.mtml:sub(start, lexer_state.idx - 1))
 end
 
 function skip_whitespace(lexer_state)

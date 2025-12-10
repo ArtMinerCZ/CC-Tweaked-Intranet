@@ -23,36 +23,43 @@ local function loadPages()
 
     local files = fs.list(PAGE_DIR)
     for _, file in ipairs(files) do
-        if file:match("%.lua$") and not file:match("_color%.lua$") then
-            local name = file:gsub("%.lua$", "")
-            local path = fs.combine(PAGE_DIR, file)
-
-            local ok, data = pcall(dofile, path)
-            if ok and type(data) == "table" then
-                pages[name] = data
-                table.insert(index, name)
-                print("Loaded page:", name)
-
-                -- load color table
-                local colorFile = name .. "_color.lua"
-                local colorPath = fs.combine(PAGE_DIR, colorFile)
-                if fs.exists(colorPath) then
-                    local ok2, coldata = pcall(dofile, colorPath)
-                    if ok2 and type(coldata) == "table" then
-                        colors[name] = coldata
-                        print("Loaded color table:", name)
-                    else
-                        colors[name] = {}
-                        print("Failed to load color table:", colorFile)
-                    end
-                else
-                    colors[name] = {}
-                    print("No color table found for:", name)
-                end
-            else
-                print("Failed to load page:", file)
-            end
+        if not file:match("%.lua$") and file:match("_color%.lua$") then
+            return
         end
+
+        local name = file:gsub("%.lua$", "")
+        local path = fs.combine(PAGE_DIR, file)
+
+        local ok, data = pcall(dofile, path)
+
+        if not ok or type(data) ~= table then
+            print("Failed to load page:", file)
+            return
+        end
+
+        pages[name] = data
+        table.insert(index, name)
+        print("Loaded page:", name)
+
+        -- load color table
+        local colorFile = name .. "_color.lua"
+        local colorPath = fs.combine(PAGE_DIR, colorFile)
+
+        if not fs.exists(colorPath) then
+            colors[name] = {}
+            print("No color table found for:", name)
+            return
+        end
+
+        local ok2, coldata = pcall(dofile, colorPath)
+        if not ok2 or type(coldata) ~= "table" then
+            colors[name] = {}
+            print("Failed to load color table:", colorFile)
+            return
+        end
+
+        colors[name] = coldata
+        print("Loaded color table:", name)
     end
 end
 
