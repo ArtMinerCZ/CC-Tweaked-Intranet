@@ -32,7 +32,7 @@ local function loadPages()
 
         local ok, data = pcall(dofile, path)
 
-        if not ok or type(data) ~= table then
+        if not ok or type(data) ~= "table" then
             print("Failed to load page:", file)
             return
         end
