@@ -8,7 +8,10 @@ function mod.parse_mtml(mtml)
   local tokens, err = lex(mtml)
   if err then return nil, err end
   return tokens
+  -- return parse(tokens)
 end
+
+
 
 function lex(mtml)
   local lexer_state = {
@@ -36,12 +39,20 @@ function lex(mtml)
 
   while lexer_state.idx <= lexer_state.len do
     if lexer_state.current_char() == "<" then
+      if lexer_state.mtml:sub(lexer_state.idx + 1, lexer_state.idx + 1) == "!" then
+        while lexer_state.current_char() ~= ">" do
+          lexer_state.next()
+        end
+        lexer_state.next()
+        goto continue
+      end
       local err = tokenize_tag(lexer_state)
       if err then return nil, err end
     else
       local err = tokenize_chunk(lexer_state)
       if err then return nil, err end
     end
+    ::continue::
   end
 
   return lexer_state.tokens
@@ -85,7 +96,7 @@ function tokenize_tag(lexer_state)
     return lexer_state.error "Invalid self-closing tag"
   end
 
-  table.insert(lexer_state.tokens, tag)
+  table.insert(lexer_state.tokens, { pos = lexer_state.idx, value = tag })
 end
 
 function tokenize_tag_attributes(lexer_state, tag)
@@ -174,7 +185,7 @@ function tokenize_chunk(lexer_state)
     lexer_state.next()
   end
 
-  table.insert(lexer_state.tokens, lexer_state.mtml:sub(start, lexer_state.idx - 1))
+  table.insert(lexer_state.tokens, { pos = lexer_state.idx, value = lexer_state.mtml:sub(start, lexer_state.idx - 1 ) })
 end
 
 function skip_whitespace(lexer_state)
@@ -197,6 +208,50 @@ function next_word(lexer_state)
   if start == lexer_state.idx then return nil end
   return lexer_state.mtml:sub(start, lexer_state.idx - 1)
 end
+
+
+
+function parse(tokens)
+  local parsed_page = {}
+  local tag_name_stack = {}
+  local tag_stacks = {}
+
+  for _, token in ipairs(tokens) do
+    if type(token) ~= "table" then
+      append_string(parsed_page, token)
+      goto continue
+    end
+
+    if token.self_closing then
+      --TODO
+      goto continue
+    end
+
+    if token.closing then
+      --TODO
+    end
+
+    table.insert(tag_name_stack, token.name)
+    tag_stacks[token.name] = tag_stacks[token.name] or {}
+    table.insert(tag_stacks[token.name], token.attributes)
+    append_string(parsed_page, token)
+
+    ::continue::
+  end
+end
+
+function append_string(parsed_page, string)
+  if type(parsed_page[#parsed_page]) == "string" then
+    parsed_page[#parsed_page] = parsed_page[#parsed_page] .. string
+    return
+  end
+  table.insert(parsed_page, string)
+end
+
+function append_command(parsed_page)
+  --TODO
+end
+
 
 
 ---Renders the page to the given terminal with the set scroll amount
