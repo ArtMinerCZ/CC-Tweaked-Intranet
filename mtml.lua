@@ -3,7 +3,7 @@ local mod = {}
 ---Parses the given html into a table that can be rendered using "render_page"
 ---@param mtml string
 ---@return table?, string? error
-function mod.parse_mtml(mtml)
+function mod.page_from_mtml(mtml)
   if type(mtml) ~= "string" then return nil, "String expected got " .. type(mtml) .. " instead" end
   local tokens, err = lex(mtml)
   if err then return nil, err end
@@ -40,22 +40,36 @@ function lex(mtml)
   while lexer_state.idx <= lexer_state.len do
     if lexer_state.current_char() == "<" then
       if lexer_state.mtml:sub(lexer_state.idx + 1, lexer_state.idx + 1) == "!" then
-        while lexer_state.current_char() ~= ">" do
-          lexer_state.next()
-        end
-        lexer_state.next()
-        goto continue
+        skip_comment(lexer_state)
       end
+
       local err = tokenize_tag(lexer_state)
       if err then return nil, err end
-    else
-      local err = tokenize_chunk(lexer_state)
-      if err then return nil, err end
+
+      goto continue
     end
+
+    if lexer_state.current_char() == "\n" then
+      lexer_state.line_number = lexer_state.line_number + 1
+      lexer_state.previous_newline = lexer_state.idx
+      table.insert(lexer_state.tokens, "\n")
+      lexer_state.next()
+      goto continue
+    end
+
+    local err = tokenize_chunk(lexer_state)
+    if err then return nil, err end
     ::continue::
   end
 
   return lexer_state.tokens
+end
+
+function skip_comment(lexer_state)
+  while lexer_state.current_char() ~= ">" do
+    lexer_state.next()
+  end
+  lexer_state.next()
 end
 
 function tokenize_tag(lexer_state)
@@ -96,7 +110,11 @@ function tokenize_tag(lexer_state)
     return lexer_state.error "Invalid self-closing tag"
   end
 
-  table.insert(lexer_state.tokens, { pos = lexer_state.idx, value = tag })
+  table.insert(lexer_state.tokens, {
+    line = lexer_state.line_number,
+    column = lexer_state.idx - lexer_state.previous_newline,
+    value = tag
+  })
 end
 
 function tokenize_tag_attributes(lexer_state, tag)
@@ -177,15 +195,16 @@ function tokenize_chunk(lexer_state)
     if not lexer_state.current_char() then break end
     if lexer_state.current_char() == "<" then break end
 
-    if lexer_state.current_char() == "\n" then
-      lexer_state.line_number = lexer_state.line_number + 1
-      lexer_state.previous_newline = lexer_state.idx
-    end
+    if lexer_state.current_char() == "\n" then break end
 
     lexer_state.next()
   end
 
-  table.insert(lexer_state.tokens, { pos = lexer_state.idx, value = lexer_state.mtml:sub(start, lexer_state.idx - 1 ) })
+  table.insert(lexer_state.tokens, {
+    line = lexer_state.line_number,
+    column = lexer_state.idx - lexer_state.previous_newline,
+    value = lexer_state.mtml:sub(start, lexer_state.idx - 1 )
+  })
 end
 
 function skip_whitespace(lexer_state)
@@ -214,33 +233,60 @@ end
 function parse(tokens)
   local parsed_page = {}
   local tag_name_stack = {}
-  local tag_stacks = {}
+  local tag_stacks = {
+    color = {},
+    link = {},
+    nowrap = 1,
+  }
 
   for _, token in ipairs(tokens) do
-    if type(token) ~= "table" then
-      append_string(parsed_page, token)
+    local token_value = token.value
+    if type(token_value) ~= "table" then
+      append_string(parsed_page, token_value)
       goto continue
     end
+    local tag = token_value
 
-    if token.self_closing then
+    if tag.self_closing then
       --TODO
       goto continue
     end
 
-    if token.closing then
-      --TODO
+    if tag.closing then
+      if table.remove(tag_name_stack).name ~= tag.name then
+        return nil, parser_error(token, "Missing opening tag")
+      end
+      local err = close_tag(tag_stacks, token)
+      if err then return err end
     end
 
-    table.insert(tag_name_stack, token.name)
-    tag_stacks[token.name] = tag_stacks[token.name] or {}
-    table.insert(tag_stacks[token.name], token.attributes)
-    append_string(parsed_page, token)
+    local command = generate_command()
+    append_command(parsed_page, command)
 
     ::continue::
+  end
+
+  local leftover_tag = table.remove(tag_name_stack)
+  if leftover_tag then
+    local err_msg = "[" .. leftover_tag.line .. ":" .. leftover_tag.column .. "] Unclosed tag"
+    return nil, err_msg
+  end
+
+end
+
+function close_tag(tag_stacks, token)
+  local name = token.value.name
+  if name == "color" then
+    table.remove(tag_stacks.color)
+  elseif name == "link" then
+    table.remove(tag_stacks.link)
+  elseif name == "nowrap" then
+    tag_stacks.nowrap = tag_stacks.nowrap - 1
   end
 end
 
 function append_string(parsed_page, string)
+  if string == "" then return end
   if type(parsed_page[#parsed_page]) == "string" then
     parsed_page[#parsed_page] = parsed_page[#parsed_page] .. string
     return
@@ -248,8 +294,11 @@ function append_string(parsed_page, string)
   table.insert(parsed_page, string)
 end
 
-function append_command(parsed_page)
+function append_command(parsed_page, tag_stacks)
   --TODO
+end
+
+function parser_error(token, msg)
 end
 
 
