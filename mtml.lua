@@ -1,6 +1,6 @@
 local mod = {}
 
----Parses the given html into a table that can be rendered using "render_page"
+---Parses the given html into a table that can be rendered using `render_page`
 ---@param mtml string
 ---@return table?, string? error
 function mod.page_from_mtml(mtml)
@@ -53,7 +53,7 @@ function lex(mtml)
     if lexer_state.current_char() == "\n" then
       lexer_state.line_number = lexer_state.line_number + 1
       lexer_state.previous_newline = lexer_state.idx
-      table.insert(lexer_state.tokens, "\n")
+      table.insert(lexer_state.tokens, { newline_position = lexer_state.idx })
       lexer_state.next()
       goto continue
     end
@@ -232,20 +232,38 @@ end
 
 
 function parse(tokens)
-  local parsed_page = {}
+  local page = {
+    content = {{
+      text_color = "black",
+      background_color = "white",
+      word_wrap = false,
+      link = false,
+    }},
+    title = "",
+    newlines = {}
+  }
+  
   local tag_name_stack = {}
   local tag_stacks = {
-    color = {},
+    text_color = {},
+    background_color = {},
     link = {},
     nowrap = 1,
   }
 
   for _, token in ipairs(tokens) do
     local token_value = token.value
+
+    local newline_position = token.newline_position
+    if newline_position then
+      table.insert(page.newlines, newline_position)
+    end
+
     if type(token_value) ~= "table" then
-      append_string(parsed_page, token_value)
+      append_string(page.content, token_value)
       goto continue
     end
+
     local tag = token_value
 
     if tag.self_closing then
@@ -261,8 +279,11 @@ function parse(tokens)
       if err then return err end
     end
 
-    local command = generate_command()
-    append_command(parsed_page, command)
+    table.insert(tag_name_stack, tag.name)
+    open_tag(tag_stacks, token)
+
+    local command = generate_command(tag_stacks)
+    append_command(page.content, command)
 
     ::continue::
   end
@@ -273,12 +294,34 @@ function parse(tokens)
     return nil, err_msg
   end
 
+  return page
 end
 
-function close_tag(tag_stacks, token)
-  local name = token.value.name
+function open_tag(tag_stacks, token_value)
+  local name = token_value.name
   if name == "color" then
-    table.remove(tag_stacks.color)
+    if token_value.attributes.text then
+      table.insert(tag_stacks.text_color, token_value.attributes.text)
+    end
+    if token_value.attributes.background then
+      table.insert(tag_stacks.background_color, token_value.attributes.background)
+    end
+  elseif name == "link" then
+    table.insert(tag_stacks.link, token_value.attributes.src)
+  elseif name == "nowrap" then
+    tag_stacks.nowrap = tag_stacks.nowrap + 1
+  end
+end
+
+function close_tag(tag_stacks, token_value)
+  local name = token_value.name
+  if name == "color" then
+    if token_value.attributes.text then
+      table.remove(tag_stacks.text_color)
+    end
+    if token_value.attributes.background then
+      table.remove(tag_stacks.background_color)
+    end
   elseif name == "link" then
     table.remove(tag_stacks.link)
   elseif name == "nowrap" then
@@ -286,20 +329,63 @@ function close_tag(tag_stacks, token)
   end
 end
 
-function append_string(parsed_page, string)
+function append_string(page_content, string)
   if string == "" then return end
-  if type(parsed_page[#parsed_page]) == "string" then
-    parsed_page[#parsed_page] = parsed_page[#parsed_page] .. string
+  if type(page_content[#page_content]) == "string" then
+    page_content[#page_content] = page_content[#page_content] .. string
     return
   end
-  table.insert(parsed_page, string)
+  table.insert(page_content, string)
 end
 
-function append_command(parsed_page, tag_stacks)
-  --TODO
+function append_command(page_content, command)
+  local last_command = nil
+  local i = #page_content
+  while i > 0 do
+    if type(page_content[i]) == "table" then
+      last_command = page_content[i]
+      break
+    end
+    i = i - 1
+  end
+
+  -- If the last element was a command simply update it instead of adding a new command
+  if i == #page_content then
+    for k, _ in pairs(command) do
+      last_command[k] = command[k]
+    end
+    return
+  end
+
+  local new_command = {}
+
+  for k, v in pairs(command) do
+    if last_command[k] == v then
+      goto continue
+    end
+    new_command[k] = v
+    ::continue::
+  end
+
+  table.insert(page_content, new_command)
+end
+
+function generate_command(tag_stacks)
+  local command = {}
+
+  command.nowrap = tag_stacks.nowrap > 0
+  command.text_color = tag_stacks.text_color[#tag_stacks.text_color]
+  command.background_color = tag_stacks.background_color[#tag_stacks.background_color]
+  command.link = tag_stacks.link[#tag_stacks.link]
+  if command.link == nil then
+    command.link = false
+  end
+
+  return command
 end
 
 function parser_error(token, msg)
+  return "[" .. token.line .. ":" .. token.column .. "] " .. msg
 end
 
 
