@@ -41,6 +41,7 @@ function lex(mtml)
     if lexer_state.current_char() == "<" then
       if lexer_state.mtml:sub(lexer_state.idx + 1, lexer_state.idx + 1) == "!" then
         skip_comment(lexer_state)
+        goto continue
       end
 
       local err = tokenize_tag(lexer_state)
