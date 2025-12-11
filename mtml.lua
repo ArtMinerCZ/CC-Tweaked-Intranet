@@ -9,7 +9,6 @@ function mod.page_from_mtml(mtml)
   if type(mtml) ~= "string" then return nil, "String expected got " .. type(mtml) .. " instead" end
   local tokens, err = lex(mtml)
   if err then return nil, err end
-  -- return tokens
   return parse(tokens)
 end
 
@@ -308,6 +307,11 @@ function parse(tokens)
     return nil, err_msg
   end
 
+  -- Remove unnecesarry last command
+  if type(page.content[#page.content]) == "table" then
+    table.remove(page.content)
+  end
+
   return page
 end
 
@@ -364,7 +368,10 @@ function append_command(page_content, command, previous_command)
     previous_command[k] = v
     ::continue::
   end
-  
+
+  --DEBUG
+  pprint.pprint(trimmed_command)
+
   if type(last_element) == "table" then
     for k, v in pairs(trimmed_command) do
       last_element[k] = v
