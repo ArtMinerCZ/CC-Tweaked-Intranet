@@ -1,5 +1,7 @@
 local mod = {}
 
+local pprint = require "pprint"
+
 ---Parses the given html into a table that can be rendered using `render_page`
 ---@param mtml string
 ---@return table?, string? error
@@ -7,8 +9,8 @@ function mod.page_from_mtml(mtml)
   if type(mtml) ~= "string" then return nil, "String expected got " .. type(mtml) .. " instead" end
   local tokens, err = lex(mtml)
   if err then return nil, err end
-  return tokens
-  -- return parse(tokens)
+  -- return tokens
+  return parse(tokens)
 end
 
 
@@ -166,6 +168,8 @@ function tokenize_tag_attributes(lexer_state, tag)
       return lexer_state.error "Expected comma between attributes"
     end
 
+    lexer_state.next()
+
     skip_whitespace(lexer_state)
   end
 end
@@ -177,17 +181,15 @@ function next_attribute_value(lexer_state)
     while lexer_state.current_char():find("%d") do
       lexer_state.next()
     end
+    return lexer_state.mtml:sub(start, lexer_state.idx - 1)
   elseif current_char == "\"" then
     lexer_state.next()
     while lexer_state:current_char() ~= "\"" do
       lexer_state.next()
     end
     lexer_state.next()
+    return lexer_state.mtml:sub(start + 1, lexer_state.idx - 2)
   end
-  if start == lexer_state.idx then
-    return nil, lexer_state.error "Expected attribute value"
-  end
-  return lexer_state.mtml:sub(start, lexer_state.idx - 1)
 end
 
 function tokenize_chunk(lexer_state)
@@ -233,23 +235,27 @@ end
 
 function parse(tokens)
   local page = {
-    content = {{
-      text_color = "black",
-      background_color = "white",
-      word_wrap = false,
-      link = false,
-    }},
-    title = "",
+    content = {},
+    title = "Untitled",
     newlines = {}
   }
   
   local tag_name_stack = {}
   local tag_stacks = {
-    text_color = {},
-    background_color = {},
-    link = {},
-    nowrap = 1,
+    text_color = { "black" },
+    bg_color   = { "white" },
+    link       = { },
+    nowrap     = 0,
   }
+
+  local previous_command = {
+    text_color = "black",
+    bg_color = "white",
+    link = false,
+    nowrap = false,
+  }
+
+  table.insert(page.content, previous_command)
 
   for _, token in ipairs(tokens) do
     local token_value = token.value
@@ -257,6 +263,7 @@ function parse(tokens)
     local newline_position = token.newline_position
     if newline_position then
       table.insert(page.newlines, newline_position)
+      goto continue
     end
 
     if type(token_value) ~= "table" then
@@ -275,15 +282,22 @@ function parse(tokens)
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
       end
-      local err = close_tag(tag_stacks, token)
-      if err then return err end
+      local err = close_tag(tag_stacks, token_value)
+      if err then return nil, err end
+      local command = generate_command(tag_stacks)
+      append_command(page.content, command, previous_command)
+      goto continue
     end
 
-    table.insert(tag_name_stack, tag.name)
-    open_tag(tag_stacks, token)
+    table.insert(tag_name_stack, {
+      name = tag.name,
+      line = token.line,
+      column = token.column,
+    })
+    open_tag(tag_stacks, token_value)
 
     local command = generate_command(tag_stacks)
-    append_command(page.content, command)
+    append_command(page.content, command, previous_command)
 
     ::continue::
   end
@@ -300,12 +314,16 @@ end
 function open_tag(tag_stacks, token_value)
   local name = token_value.name
   if name == "color" then
+    local text_color = tag_stacks.text_color[#tag_stacks.text_color]
+    local bg_color = tag_stacks.bg_color[#tag_stacks.bg_color]
     if token_value.attributes.text then
-      table.insert(tag_stacks.text_color, token_value.attributes.text)
+      text_color = token_value.attributes.text
     end
-    if token_value.attributes.background then
-      table.insert(tag_stacks.background_color, token_value.attributes.background)
+    if token_value.attributes.bg then
+      bg_color = token_value.attributes.bg
     end
+    table.insert(tag_stacks.text_color, text_color)
+    table.insert(tag_stacks.bg_color, bg_color)
   elseif name == "link" then
     table.insert(tag_stacks.link, token_value.attributes.src)
   elseif name == "nowrap" then
@@ -316,12 +334,8 @@ end
 function close_tag(tag_stacks, token_value)
   local name = token_value.name
   if name == "color" then
-    if token_value.attributes.text then
-      table.remove(tag_stacks.text_color)
-    end
-    if token_value.attributes.background then
-      table.remove(tag_stacks.background_color)
-    end
+    table.remove(tag_stacks.text_color)
+    table.remove(tag_stacks.bg_color)
   elseif name == "link" then
     table.remove(tag_stacks.link)
   elseif name == "nowrap" then
@@ -338,45 +352,35 @@ function append_string(page_content, string)
   table.insert(page_content, string)
 end
 
-function append_command(page_content, command)
-  local last_command = nil
-  local i = #page_content
-  while i > 0 do
-    if type(page_content[i]) == "table" then
-      last_command = page_content[i]
-      break
-    end
-    i = i - 1
-  end
+function append_command(page_content, command, previous_command)
+  local trimmed_command = {}
+  local last_element = page_content[#page_content]
 
-  -- If the last element was a command simply update it instead of adding a new command
-  if i == #page_content then
-    for k, _ in pairs(command) do
-      last_command[k] = command[k]
+  for k, v in pairs(command) do
+    if previous_command[k] == v then
+      goto continue
+    end
+    trimmed_command[k] = v
+    previous_command[k] = v
+    ::continue::
+  end
+  
+  if type(last_element) == "table" then
+    for k, v in pairs(trimmed_command) do
+      last_element[k] = v
     end
     return
   end
 
-  local new_command = {}
-
-  for k, v in pairs(command) do
-    if last_command[k] == v then
-      goto continue
-    end
-    new_command[k] = v
-    ::continue::
-  end
-
-  table.insert(page_content, new_command)
+  table.insert(page_content, trimmed_command)
 end
 
 function generate_command(tag_stacks)
   local command = {}
-
   command.nowrap = tag_stacks.nowrap > 0
-  command.text_color = tag_stacks.text_color[#tag_stacks.text_color]
-  command.background_color = tag_stacks.background_color[#tag_stacks.background_color]
   command.link = tag_stacks.link[#tag_stacks.link]
+  command.text_color = tag_stacks.text_color[#tag_stacks.text_color]
+  command.bg_color = tag_stacks.bg_color[#tag_stacks.bg_color]
   if command.link == nil then
     command.link = false
   end
