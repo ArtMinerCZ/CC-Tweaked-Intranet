@@ -17,6 +17,7 @@ function mod.new(list)
 end
 
 function Array.push(self, element)
+  if element == nil then return end
   self.len = self.len + 1
   table.insert(self, element)
 end
