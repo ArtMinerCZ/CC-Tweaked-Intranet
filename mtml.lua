@@ -270,7 +270,7 @@ function parse(tokens)
       table.insert(page.newlines, page.content.len)
       goto continue
     end
-    
+
     local token_value = token.value
 
     -- Add text block
@@ -291,14 +291,16 @@ function parse(tokens)
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
       end
-      close_tag(tag_stacks, token_value)
+      local err = close_tag(tag_stacks, token_value)
+      if err then return err end
     else
       table.insert(tag_name_stack, {
         name = tag.name,
         line = token.line,
         column = token.column,
       })
-      open_tag(tag_stacks, token_value)
+      local err = open_tag(tag_stacks, token_value)
+      if err then return err end
     end
 
     local command = generate_command(tag_stacks)
@@ -344,6 +346,7 @@ function open_tag(tag_stacks, token_value)
     tag_stacks.text_color:push(text_color)
     tag_stacks.bg_color:push(bg_color)
   elseif name == "link" then
+    local src = token_value.attributes.src
     tag_stacks.link:push(token_value.attributes.src)
     tag_stacks.text_color:push("blue")
   elseif name == "nowrap" then
@@ -366,7 +369,10 @@ end
 
 function append_string(page_content, string)
   if string == "" then return end
-  if type(page_content:last()) == "string" then
+  if
+    type(page_content:last()) == "string" and
+    page_content:last() ~= "\n"
+  then
     page_content[page_content.len] = page_content:last() .. string
     return
   end
@@ -393,7 +399,7 @@ function append_command(page_content, command, previous_command)
     return
   end
 
-  page_content:push(command)
+  page_content:push(trimmed_command)
 end
 
 function generate_command(tag_stacks)
