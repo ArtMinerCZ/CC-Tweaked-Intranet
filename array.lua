@@ -2,7 +2,11 @@ local mod = {}
 
 local Array = {}
 
+---Creates a new array. Module can also be called directly to do the same thing.
+---@param list table
+---@return table
 function mod.new(list)
+  if type(list) ~= "table" then return nil end
   list.len = #list
 
   for k, v in pairs(Array) do
@@ -34,7 +38,6 @@ function Array.to_list(self)
     end
   end
 end
-
 
 setmetatable(mod, {
   __call = function (_, ...)
