@@ -10,6 +10,7 @@ function mod.page_from_mtml(mtml)
   local tokens, err = lex(mtml)
   if err then return nil, err end
   return parse(tokens)
+  -- return tokens
 end
 
 
@@ -54,7 +55,7 @@ function lex(mtml)
     if lexer_state.current_char() == "\n" then
       lexer_state.line_number = lexer_state.line_number + 1
       lexer_state.previous_newline = lexer_state.idx
-      table.insert(lexer_state.tokens, { newline_position = lexer_state.idx })
+      table.insert(lexer_state.tokens, "\n")
       lexer_state.next()
       goto continue
     end
@@ -242,8 +243,19 @@ function parse(tokens)
   local page = {
     content = {},
     title = "Untitled",
-    newlines = {}
+    newlines = {},
+    content_length = 0,
   }
+
+  function page.content.push(element)
+    page.content.len = (page.content.len or 0) + 1
+    table.insert(page.content, element)
+  end
+
+  function page.content.pop()
+    page.content.len = page.content.len - 1
+    return table.remove(page.content)
+  end
   
   local tag_name_stack = {}
   local tag_stacks = {
@@ -260,19 +272,19 @@ function parse(tokens)
     nowrap = false,
   }
 
-  table.insert(page.content, shallow_copy_table(previous_command))
+  page.content.push(shallow_copy_table(previous_command))
 
   for _, token in ipairs(tokens) do
-    local token_value = token.value
-    -- print "CONTENT"
-    -- pprint(page.content)
-
-    local newline_position = token.newline_position
-    if newline_position then
-      table.insert(page.newlines, newline_position)
+    -- Add newline
+    if token == "\n" then
+      page.content.push("\n")
+      table.insert(page.newlines, page.content.len)
       goto continue
     end
+    
+    local token_value = token.value
 
+    -- Add text block
     if type(token_value) ~= "table" then
       append_string(page.content, token_value)
       goto continue
@@ -285,6 +297,7 @@ function parse(tokens)
       goto continue
     end
 
+    -- Add or remove tag
     if tag.closing then
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
@@ -298,25 +311,28 @@ function parse(tokens)
       })
       open_tag(tag_stacks, token_value)
     end
-    -- pprint(tag_stacks)
 
     local command = generate_command(tag_stacks)
     append_command(page.content, command, previous_command)
-    -- print "COMMAND"
-    -- pprint(command)
 
     ::continue::
   end
 
+  -- Remove trailing newlines
+  while page.content[page.content.len] == "\n" do
+    page.content.pop()
+    table.remove(page.newlines)
+  end
+
+  -- Remove trailing command
   local leftover_tag = table.remove(tag_name_stack)
   if leftover_tag then
     local err_msg = "[" .. leftover_tag.line .. ":" .. leftover_tag.column .. "] Unclosed tag"
     return nil, err_msg
   end
 
-  -- Remove unnecesarry last command
-  if type(page.content[#page.content]) == "table" then
-    table.remove(page.content)
+  if type(page.content[page.content.len]) == "table" then
+    page.content.pop()
   end
 
   return page
@@ -356,16 +372,16 @@ end
 
 function append_string(page_content, string)
   if string == "" then return end
-  if type(page_content[#page_content]) == "string" then
-    page_content[#page_content] = page_content[#page_content] .. string
+  if type(page_content[page_content.len]) == "string" then
+    page_content[page_content.len] = page_content[page_content.len] .. string
     return
   end
-  table.insert(page_content, string)
+  page_content.push(string)
 end
 
 function append_command(page_content, command, previous_command)
   local trimmed_command = {}
-  local last_element = page_content[#page_content]
+  local last_element = page_content[page_content.len]
 
   for k, v in pairs(command) do
     if previous_command[k] == v then
@@ -383,7 +399,7 @@ function append_command(page_content, command, previous_command)
     return
   end
 
-  table.insert(page_content, trimmed_command)
+  page_content.push(command)
 end
 
 function generate_command(tag_stacks)
