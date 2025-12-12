@@ -100,6 +100,12 @@ function tokenize_tag(lexer_state)
   skip_whitespace(lexer_state)
   local err = tokenize_tag_attributes(lexer_state, tag)
   if err then return err end
+  if tag.closing then
+    if #tag.attributes > 0 then
+      return lexer_state.error "Closing tags cannot have attributes"
+    end
+    tag.attributes = nil
+  end
 
   skip_whitespace(lexer_state)
   if lexer_state.current_char() ~= ">" then
@@ -243,7 +249,7 @@ function parse(tokens)
   local tag_stacks = {
     text_color = { "black" },
     bg_color   = { "white" },
-    link       = { },
+    link       = {},
     nowrap     = 0,
   }
 
@@ -254,10 +260,12 @@ function parse(tokens)
     nowrap = false,
   }
 
-  table.insert(page.content, previous_command)
+  table.insert(page.content, shallow_copy_table(previous_command))
 
   for _, token in ipairs(tokens) do
     local token_value = token.value
+    -- print "CONTENT"
+    -- pprint(page.content)
 
     local newline_position = token.newline_position
     if newline_position then
@@ -281,22 +289,21 @@ function parse(tokens)
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
       end
-      local err = close_tag(tag_stacks, token_value)
-      if err then return nil, err end
-      local command = generate_command(tag_stacks)
-      append_command(page.content, command, previous_command)
-      goto continue
+      close_tag(tag_stacks, token_value)
+    else
+      table.insert(tag_name_stack, {
+        name = tag.name,
+        line = token.line,
+        column = token.column,
+      })
+      open_tag(tag_stacks, token_value)
     end
-
-    table.insert(tag_name_stack, {
-      name = tag.name,
-      line = token.line,
-      column = token.column,
-    })
-    open_tag(tag_stacks, token_value)
+    -- pprint(tag_stacks)
 
     local command = generate_command(tag_stacks)
     append_command(page.content, command, previous_command)
+    -- print "COMMAND"
+    -- pprint(command)
 
     ::continue::
   end
@@ -369,9 +376,6 @@ function append_command(page_content, command, previous_command)
     ::continue::
   end
 
-  --DEBUG
-  pprint.pprint(trimmed_command)
-
   if type(last_element) == "table" then
     for k, v in pairs(trimmed_command) do
       last_element[k] = v
@@ -397,6 +401,14 @@ end
 
 function parser_error(token, msg)
   return "[" .. token.line .. ":" .. token.column .. "] " .. msg
+end
+
+function shallow_copy_table(original)
+  local copy = {}
+  for k, v in pairs(original) do
+    copy[k] = v
+  end
+  return copy
 end
 
 
