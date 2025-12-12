@@ -1,6 +1,7 @@
 local mod = {}
 
-local pprint = require "pprint"
+-- local pprint = require "pprint"
+local array  = require "array"
 
 ---Parses the given html into a table that can be rendered using `render_page`
 ---@param mtml string
@@ -10,7 +11,6 @@ function mod.page_from_mtml(mtml)
   local tokens, err = lex(mtml)
   if err then return nil, err end
   return parse(tokens)
-  -- return tokens
 end
 
 
@@ -241,27 +241,16 @@ end
 
 function parse(tokens)
   local page = {
-    content = {},
+    content = array {},
     title = "Untitled",
     newlines = {},
-    content_length = 0,
   }
 
-  function page.content.push(element)
-    page.content.len = (page.content.len or 0) + 1
-    table.insert(page.content, element)
-  end
-
-  function page.content.pop()
-    page.content.len = page.content.len - 1
-    return table.remove(page.content)
-  end
-  
   local tag_name_stack = {}
   local tag_stacks = {
-    text_color = { "black" },
-    bg_color   = { "white" },
-    link       = {},
+    text_color = array { "black" },
+    bg_color   = array { "white" },
+    link       = array {},
     nowrap     = 0,
   }
 
@@ -272,12 +261,12 @@ function parse(tokens)
     nowrap = false,
   }
 
-  page.content.push(shallow_copy_table(previous_command))
+  page.content:push(shallow_copy_table(previous_command))
 
   for _, token in ipairs(tokens) do
     -- Add newline
     if token == "\n" then
-      page.content.push("\n")
+      page.content:push("\n")
       table.insert(page.newlines, page.content.len)
       goto continue
     end
@@ -318,22 +307,25 @@ function parse(tokens)
     ::continue::
   end
 
-  -- Remove trailing newlines
-  while page.content[page.content.len] == "\n" do
-    page.content.pop()
-    table.remove(page.newlines)
-  end
-
-  -- Remove trailing command
+  -- Check for unclosed tag
   local leftover_tag = table.remove(tag_name_stack)
   if leftover_tag then
     local err_msg = "[" .. leftover_tag.line .. ":" .. leftover_tag.column .. "] Unclosed tag"
     return nil, err_msg
   end
-
-  if type(page.content[page.content.len]) == "table" then
-    page.content.pop()
+  
+  -- Remove trailing newlines
+  while page.content:last() == "\n" do
+    page.content:pop()
+    table.remove(page.newlines)
   end
+
+
+  if type(page.content:last()) == "table" then
+    page.content:pop()
+  end
+
+  page.content:to_list()
 
   return page
 end
@@ -341,18 +333,19 @@ end
 function open_tag(tag_stacks, token_value)
   local name = token_value.name
   if name == "color" then
-    local text_color = tag_stacks.text_color[#tag_stacks.text_color]
-    local bg_color = tag_stacks.bg_color[#tag_stacks.bg_color]
+    local text_color = tag_stacks.text_color:last()
+    local bg_color = tag_stacks.bg_color:last()
     if token_value.attributes.text then
       text_color = token_value.attributes.text
     end
     if token_value.attributes.bg then
       bg_color = token_value.attributes.bg
     end
-    table.insert(tag_stacks.text_color, text_color)
-    table.insert(tag_stacks.bg_color, bg_color)
+    tag_stacks.text_color:push(text_color)
+    tag_stacks.bg_color:push(bg_color)
   elseif name == "link" then
-    table.insert(tag_stacks.link, token_value.attributes.src)
+    tag_stacks.link:push(token_value.attributes.src)
+    tag_stacks.text_color:push("blue")
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap + 1
   end
@@ -361,10 +354,11 @@ end
 function close_tag(tag_stacks, token_value)
   local name = token_value.name
   if name == "color" then
-    table.remove(tag_stacks.text_color)
-    table.remove(tag_stacks.bg_color)
+    tag_stacks.text_color:pop()
+    tag_stacks.bg_color:pop()
   elseif name == "link" then
-    table.remove(tag_stacks.link)
+    tag_stacks.link:pop()
+    tag_stacks.text_color:pop()
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap - 1
   end
@@ -372,16 +366,16 @@ end
 
 function append_string(page_content, string)
   if string == "" then return end
-  if type(page_content[page_content.len]) == "string" then
-    page_content[page_content.len] = page_content[page_content.len] .. string
+  if type(page_content:last()) == "string" then
+    page_content[page_content.len] = page_content:last() .. string
     return
   end
-  page_content.push(string)
+  page_content:push(string)
 end
 
 function append_command(page_content, command, previous_command)
   local trimmed_command = {}
-  local last_element = page_content[page_content.len]
+  local last_element = page_content:last()
 
   for k, v in pairs(command) do
     if previous_command[k] == v then
@@ -399,15 +393,15 @@ function append_command(page_content, command, previous_command)
     return
   end
 
-  page_content.push(command)
+  page_content:push(command)
 end
 
 function generate_command(tag_stacks)
   local command = {}
   command.nowrap = tag_stacks.nowrap > 0
-  command.link = tag_stacks.link[#tag_stacks.link]
-  command.text_color = tag_stacks.text_color[#tag_stacks.text_color]
-  command.bg_color = tag_stacks.bg_color[#tag_stacks.bg_color]
+  command.link = tag_stacks.link:last()
+  command.text_color = tag_stacks.text_color:last()
+  command.bg_color = tag_stacks.bg_color:last()
   if command.link == nil then
     command.link = false
   end
