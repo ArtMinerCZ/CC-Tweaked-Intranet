@@ -243,7 +243,7 @@ function parse(tokens)
   local page = {
     content = array {},
     title = "Untitled",
-    newlines = {},
+    newlines = { 1 },
   }
 
   local tag_name_stack = {}
@@ -280,30 +280,31 @@ function parse(tokens)
     end
 
     local tag = token_value
+    local command
 
+    -- Parse tag
     if tag.self_closing then
-      --TODO
-      goto continue
-    end
-
-    -- Add or remove tag
-    if tag.closing then
+      local err
+      command, err = command_from_self_closing_tag(tag, page)
+      if err then return nil, err end
+    elseif tag.closing then
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
       end
-      local err = close_tag(tag_stacks, token_value)
-      if err then return err end
+      local err = close_tag(tag_stacks, tag)
+      if err then return nil, err end
+      command = generate_command(tag_stacks)
     else
       table.insert(tag_name_stack, {
         name = tag.name,
         line = token.line,
         column = token.column,
       })
-      local err = open_tag(tag_stacks, token_value)
-      if err then return err end
+      local err = open_tag(tag_stacks, tag)
+      if err then return nil, err end
+      command = generate_command(tag_stacks)
     end
 
-    local command = generate_command(tag_stacks)
     append_command(page.content, command, previous_command)
 
     ::continue::
@@ -315,7 +316,7 @@ function parse(tokens)
     local err_msg = "[" .. leftover_tag.line .. ":" .. leftover_tag.column .. "] Unclosed tag"
     return nil, err_msg
   end
-  
+
   -- Remove trailing newlines
   while page.content:last() == "\n" do
     page.content:pop()
@@ -332,6 +333,13 @@ function parse(tokens)
   return page
 end
 
+function command_from_self_closing_tag(tag, page)
+  local name = tag.name
+  local command = {}
+  
+  return command
+end
+
 function open_tag(tag_stacks, token_value)
   local name = token_value.name
   if name == "color" then
@@ -346,7 +354,6 @@ function open_tag(tag_stacks, token_value)
     tag_stacks.text_color:push(text_color)
     tag_stacks.bg_color:push(bg_color)
   elseif name == "link" then
-    local src = token_value.attributes.src
     tag_stacks.link:push(token_value.attributes.src)
     tag_stacks.text_color:push("blue")
   elseif name == "nowrap" then
@@ -381,16 +388,20 @@ end
 
 function append_command(page_content, command, previous_command)
   local trimmed_command = {}
+  local command_is_empty = true
   local last_element = page_content:last()
 
   for k, v in pairs(command) do
     if previous_command[k] == v then
       goto continue
     end
+    command_is_empty = false
     trimmed_command[k] = v
     previous_command[k] = v
     ::continue::
   end
+
+  if command_is_empty then return end
 
   if type(last_element) == "table" then
     for k, v in pairs(trimmed_command) do
