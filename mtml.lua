@@ -248,15 +248,15 @@ function parse(tokens)
 
   local tag_name_stack = {}
   local tag_stacks = {
-    text_color = array { "black" },
-    bg_color   = array { "white" },
+    text_color = array { "white" },
+    bg_color   = array { "black" },
     link       = array {},
     nowrap     = 0,
   }
 
   local previous_command = {
-    text_color = "black",
-    bg_color = "white",
+    text_color = "white",
+    bg_color = "black",
     link = false,
     nowrap = false,
   }
@@ -267,7 +267,7 @@ function parse(tokens)
     -- Add newline
     if token == "\n" then
       page.content:push("\n")
-      table.insert(page.newlines, page.content.len)
+      table.insert(page.newlines, page.content.len + 1)
       goto continue
     end
 
@@ -282,11 +282,14 @@ function parse(tokens)
     local tag = token_value
     local command
 
+    local prefix_text = ""
+
     -- Parse tag
     if tag.self_closing then
-      local err
-      command, err = command_from_self_closing_tag(tag, page)
+      local command, err = command_from_self_closing_tag(tag, page)
       if err then return nil, err end
+      page.content:push(command)
+      goto continue
     elseif tag.closing then
       if table.remove(tag_name_stack).name ~= tag.name then
         return nil, parser_error(token, "Missing opening tag")
@@ -300,12 +303,14 @@ function parse(tokens)
         line = token.line,
         column = token.column,
       })
-      local err = open_tag(tag_stacks, tag)
+      local err
+      prefix_text, err = open_tag(tag_stacks, tag, page.content)
       if err then return nil, err end
       command = generate_command(tag_stacks)
     end
 
     append_command(page.content, command, previous_command)
+    append_string(page.content, prefix_text)
 
     ::continue::
   end
@@ -323,12 +328,15 @@ function parse(tokens)
     table.remove(page.newlines)
   end
 
-
-  if type(page.content:last()) == "table" then
-    page.content:pop()
+  -- Remove trailing commands
+  local last_element = page.content:last()
+  if type(last_element) == "table" then
+    if not last_element.hr then
+      page.content:pop()
+    end
   end
 
-  page.content:to_list()
+  page.line_count = #page.newlines
 
   return page
 end
@@ -336,11 +344,15 @@ end
 function command_from_self_closing_tag(tag, page)
   local name = tag.name
   local command = {}
-  
-  return command
+  if name == "hr" then
+    command.hr = tag.attributes.line or "-"
+  elseif name == "textbox" then
+    command.textbox = tag.attributes
+  end
+  return command, nil
 end
 
-function open_tag(tag_stacks, token_value)
+function open_tag(tag_stacks, token_value, page_content)
   local name = token_value.name
   if name == "color" then
     local text_color = tag_stacks.text_color:last()
@@ -356,6 +368,7 @@ function open_tag(tag_stacks, token_value)
   elseif name == "link" then
     tag_stacks.link:push(token_value.attributes.src)
     tag_stacks.text_color:push("blue")
+    return string.char(187)
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap + 1
   end
@@ -441,12 +454,98 @@ end
 
 
 ---Renders the page to the given terminal with the set scroll amount
----@param term table
----@param parsed_page table
+---@param terminal table
+---@param page table
 ---@param scroll integer
 ---@return table link_locations
-function mod.render_page(term, parsed_page, scroll)
-  --TODO
+function mod.render_page(terminal, page, scroll)
+  local ctx = {
+    term = terminal,
+    nowrap = false,
+    links = array {}
+  }
+  ctx.width, ctx.heigth = terminal.getSize()
+  
+  if scroll < 1 then scroll = 1 end
+  if scroll > page.line_count then scroll = page.line_count end
+  local start_idx = page.newlines[scroll]
+  local end_idx = page.newlines[(scroll + ctx.heigth)] or page.content.len
+  local is_first_iteration = true
+
+  terminal.setBackgroundColor(colors.black)
+  terminal.setTextColor(colors.white)
+  terminal.setCursorPos(1, 1)
+  terminal.clear()
+  
+  while start_idx < end_idx do
+    local element = page.content[start_idx]
+
+    if type(element) == "table" then
+      for name, value in pairs(element) do
+        RENDER_FUNCTIONS[name](ctx, value)
+      end
+    else
+      render_text(ctx, element)
+    end
+
+    start_idx = start_idx + 1
+    is_first_iteration = false
+  end
+end
+
+RENDER_FUNCTIONS = {
+  text_color = function(ctx, color)
+    ctx.term.setTextColor(colors[color] or colors.black)
+  end,
+  bg_color = function(ctx, color)
+    ctx.term.setBackgroundColor(colors[color] or colors.white)
+  end,
+  nowrap = function(ctx, is_enabled)
+    ctx.nowrap = is_enabled
+  end,
+  link = function(ctx, src)
+    if src then
+      ctx.links.push({
+        start = get_cursor_idx(ctx.term),
+        src = src,
+      })
+    else
+      local last_link = ctx.links:last()
+      if last_link then
+        last_link["end"] = get_cursor_idx(ctx.term)
+      end
+    end
+  end,
+  hr = function(ctx, line)
+    fill_line_end_with(ctx, line)
+  end
+}
+
+function get_cursor_idx(terminal)
+  local x, y = terminal.getCursorPos()
+  local width, _ = terminal.getSize()
+  return (y - 1) * width + x
+end
+
+function render_text(ctx, text)
+  if text == "\n" then
+    fill_line_end_with(ctx, " ")
+    local _, y = ctx.term.getCursorPos()
+    ctx.term.setCursorPos(1, y + 1)
+    return
+  end
+
+  --TODO Add word wrapping
+  ctx.term.write(text)
+end
+
+function fill_line_end_with(ctx, line)
+  local idx, _ = ctx.term.getCursorPos()
+  local len = #line
+  while idx <= ctx.width do
+    ctx.term.write(line)
+    idx = idx + len
+  end
 end
 
 ---Returns the link at a specific location on the screen
