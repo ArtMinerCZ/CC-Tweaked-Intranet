@@ -4,7 +4,7 @@ local Array = {}
 
 ---Creates a new array. Module can also be called directly to do the same thing.
 ---@param list table
----@return table
+---@return table?
 function mod.new(list)
   if type(list) ~= "table" then return nil end
   list.len = #list
