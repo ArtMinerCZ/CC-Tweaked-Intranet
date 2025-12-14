@@ -491,6 +491,8 @@ function mod.render_page(terminal, page, scroll)
     start_idx = start_idx + 1
     is_first_iteration = false
   end
+
+  return ctx.links
 end
 
 RENDER_FUNCTIONS = {
