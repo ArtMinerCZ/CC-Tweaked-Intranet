@@ -465,7 +465,7 @@ function mod.render_page(terminal, page, scroll)
     links = array {}
   }
   ctx.width, ctx.heigth = terminal.getSize()
-  
+
   if scroll < 1 then scroll = 1 end
   if scroll > page.line_count then scroll = page.line_count end
   local start_idx = page.newlines[scroll]
@@ -476,7 +476,7 @@ function mod.render_page(terminal, page, scroll)
   terminal.setTextColor(colors.white)
   terminal.setCursorPos(1, 1)
   terminal.clear()
-  
+
   while start_idx < end_idx do
     local element = page.content[start_idx]
 
