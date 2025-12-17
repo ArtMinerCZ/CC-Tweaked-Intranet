@@ -19,13 +19,13 @@ end
 function Array.push(self, element)
   if element == nil then return end
   self.len = self.len + 1
-  self[len] = element
+  self[self.len] = element
 end
 
 function Array.pop(self)
   if self.len <= 0 then return nil end
   local element = self:last()
-  self[len] = nil
+  self[self.len] = nil
   self.len = self.len - 1
   return element
 end
@@ -43,8 +43,8 @@ function Array.to_list(self)
 end
 
 function Array.append(self, array)
-  for _, v in pairs(array) do
-    self.push(v)
+  for _, v in ipairs(array) do
+    self:push(v)
   end
 end
 
