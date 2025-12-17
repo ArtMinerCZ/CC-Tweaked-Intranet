@@ -191,7 +191,9 @@ function next_attribute_value(lexer_state)
   elseif current_char == "\"" then
     lexer_state.next()
     while lexer_state:current_char() ~= "\"" do
-      lexer_state.next()
+      if not lexer_state.next() then
+        return nil, lexer_state.error "Expected string literal end"
+      end
     end
     lexer_state.next()
     return lexer_state.mtml:sub(start + 1, lexer_state.idx - 2)
@@ -457,15 +459,15 @@ end
 ---@param terminal table
 ---@param page table
 ---@param scroll integer
----@return table link_locations
+---@return table buttons
 function mod.render_page(terminal, page, scroll)
   local ctx = {
     term = terminal,
     nowrap = false,
-    links = array {}
+    buttons = array {},
   }
   ctx.width, ctx.heigth = terminal.getSize()
-
+  
   if scroll < 1 then scroll = 1 end
   if scroll > page.line_count then scroll = page.line_count end
   local start_idx = page.newlines[scroll]
@@ -476,7 +478,7 @@ function mod.render_page(terminal, page, scroll)
   terminal.setTextColor(colors.white)
   terminal.setCursorPos(1, 1)
   terminal.clear()
-
+  
   while start_idx < end_idx do
     local element = page.content[start_idx]
 
@@ -492,7 +494,8 @@ function mod.render_page(terminal, page, scroll)
     is_first_iteration = false
   end
 
-  return ctx.links
+  ctx.buttons.width = ctx.width
+  return ctx.buttons
 end
 
 RENDER_FUNCTIONS = {
@@ -506,17 +509,10 @@ RENDER_FUNCTIONS = {
     ctx.nowrap = is_enabled
   end,
   link = function(ctx, src)
-    if src then
-      ctx.links.push({
-        start = get_cursor_idx(ctx.term),
-        src = src,
-      })
-    else
-      local last_link = ctx.links:last()
-      if last_link then
-        last_link["end"] = get_cursor_idx(ctx.term)
-      end
-    end
+    add_button_pos(ctx, "link", src)
+  end,
+  button = function(ctx, id)
+    add_button_pos(ctx, "button", id)
   end,
   hr = function(ctx, line)
     fill_line_end_with(ctx, line)
@@ -550,12 +546,29 @@ function fill_line_end_with(ctx, line)
   end
 end
 
----Returns the link at a specific location on the screen
+function add_button_pos(ctx, name, value)
+  local last_button = ctx.buttons:last() or {}
+  local pos = get_cursor_idx(ctx.term)
+  value = value or nil
+  if last_button.pos == pos then
+    last_button[name] = value
+    return
+  end
+
+  local new_button = shallow_copy_table(last_button)
+  new_button[name] = value
+  new_button.pos = pos
+  ctx.buttons:push(new_button)
+end
+
+
+
+---Returns the button at a specific location on the screen
 ---@param click_x integer
 ---@param click_y integer
----@return string | nil
-function mod.get_link_at(link_locations, click_x, click_y)
-  --TODO
+---@return table? button
+function mod.get_button_at(buttons, click_x, click_y)
+  
 end
 
 return mod
