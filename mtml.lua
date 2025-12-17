@@ -494,7 +494,7 @@ function mod.render_page(terminal, page, scroll)
     is_first_iteration = false
   end
 
-  ctx.buttons.width = ctx.width
+  ctx.buttons.screen_width = ctx.width
   return ctx.buttons
 end
 
@@ -568,7 +568,10 @@ end
 ---@param click_y integer
 ---@return table? button
 function mod.get_button_at(buttons, click_x, click_y)
-  
+  local idx =  (click_y - 1) * buttons.screen_width + click_x
+  for _, button in ipairs(buttons) do
+    if idx <= button.pos then return button end
+  end
 end
 
 return mod
