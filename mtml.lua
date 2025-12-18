@@ -486,7 +486,7 @@ function mod.render_page(terminal, page, scroll)
   terminal.setCursorPos(1, 1)
   terminal.clear()
   
-  while start_idx < end_idx do
+  while start_idx <= end_idx do
     local element = page.content[start_idx]
 
     if type(element) == "table" then
