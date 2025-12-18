@@ -253,6 +253,7 @@ function parse(tokens)
     text_color = array { "white" },
     bg_color   = array { "black" },
     link       = array {},
+    button     = array {},
     nowrap     = 0,
   }
 
@@ -260,6 +261,7 @@ function parse(tokens)
     text_color = "white",
     bg_color = "black",
     link = false,
+    button = false,
     nowrap = false,
   }
 
@@ -371,6 +373,10 @@ function open_tag(tag_stacks, token_value, page_content)
     tag_stacks.link:push(token_value.attributes.src)
     tag_stacks.text_color:push("blue")
     return string.char(187)
+  elseif name == "button" then
+    tag_stacks.button:push(token_value.attributes.id)
+    tag_stacks.text_color:push("yellow")
+    return string.char(30)
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap + 1
   end
@@ -383,6 +389,9 @@ function close_tag(tag_stacks, token_value)
     tag_stacks.bg_color:pop()
   elseif name == "link" then
     tag_stacks.link:pop()
+    tag_stacks.text_color:pop()
+  elseif name == "button" then
+    tag_stacks.button:pop()
     tag_stacks.text_color:pop()
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap - 1
@@ -431,12 +440,10 @@ end
 function generate_command(tag_stacks)
   local command = {}
   command.nowrap = tag_stacks.nowrap > 0
-  command.link = tag_stacks.link:last()
+  command.link = tag_stacks.link:last() or false
+  command.button = tag_stacks.button:last() or false
   command.text_color = tag_stacks.text_color:last()
   command.bg_color = tag_stacks.bg_color:last()
-  if command.link == nil then
-    command.link = false
-  end
 
   return command
 end
