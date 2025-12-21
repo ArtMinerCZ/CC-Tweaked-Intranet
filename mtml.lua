@@ -5,7 +5,7 @@ local array  = require "array"
 
 ---Parses the given html into a table that can be rendered using `render_page`
 ---@param mtml string
----@return table?, string? error
+---@return table? page, string? error
 function mod.page_from_mtml(mtml)
   if type(mtml) ~= "string" then return nil, "String expected got " .. type(mtml) .. " instead" end
   local tokens, err = lex(mtml)
@@ -463,7 +463,8 @@ end
 
 
 ---Renders the page to the given terminal with the set scroll amount
----@param terminal table
+---@diagnostic disable-next-line: undefined-doc-name
+---@param terminal term
 ---@param page table
 ---@param scroll integer
 ---@return table buttons
@@ -504,6 +505,8 @@ function mod.render_page(terminal, page, scroll)
   ctx.buttons.screen_width = ctx.width
   return ctx.buttons
 end
+
+
 
 RENDER_FUNCTIONS = {
   text_color = function(ctx, color)
@@ -571,13 +574,19 @@ end
 
 
 ---Returns the button at a specific location on the screen
+---@param buttons table
 ---@param click_x integer
 ---@param click_y integer
 ---@return table? button
 function mod.get_button_at(buttons, click_x, click_y)
   local idx =  (click_y - 1) * buttons.screen_width + click_x
+  local found_button = {}
   for _, button in ipairs(buttons) do
-    if idx <= button.pos then return button end
+    if idx <= button.pos then found_button = shallow_copy_table(button) end
+  end
+  found_button.pos = nil
+  for _, _ in pairs(found_button) do
+    return found_button
   end
 end
 
