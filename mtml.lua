@@ -351,7 +351,10 @@ function command_from_self_closing_tag(tag, page)
   if name == "hr" then
     command.hr = tag.attributes.line or "-"
   elseif name == "textbox" then
-    command.textbox = tag.attributes
+    local textbox = {}
+    textbox.size = tag.attributes.size or 4
+    textbox.id = tag.attributes.id
+    command.textbox = textbox
   end
   return command, nil
 end
@@ -462,6 +465,24 @@ end
 
 
 
+---Updates content on the page and wraps words to make text fit on the given terminal
+---@param terminal term
+---@param page table
+---@param data table
+---@return table page
+function mod.update_page(terminal, page, data)
+  local updated_page = {}
+  for index, value in ipairs(page) do
+    
+  end
+end
+
+function wrap_line(line, screen_width)
+
+end
+
+
+
 ---Renders the page to the given terminal with the set scroll amount
 ---@diagnostic disable-next-line: undefined-doc-name
 ---@param terminal term
@@ -526,8 +547,15 @@ RENDER_FUNCTIONS = {
   end,
   hr = function(ctx, line)
     fill_line_end_with(ctx, line)
+  end,
+  textbox = function(ctx, attributes)
+    
   end
 }
+
+function render_text_box()
+
+end
 
 function get_cursor_idx(terminal)
   local x, y = terminal.getCursorPos()
