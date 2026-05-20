@@ -298,11 +298,11 @@ local function mouse_click()
                     print(pressed.link)
                     address_bar(pressed.link)
                 elseif pressed and pressed.textbox ~= nil then
-                    term.redirect(page_window)
-                    term.setCursor(x,y)
+                    
+                    term.setCursorPos(x,y)
      
                     local textbox_input = read()
-                    term.redirect(original_term)
+                    
                     send_message(site_id, "textbox_input", textbox_input)
                     print(textbox_input)
                     
