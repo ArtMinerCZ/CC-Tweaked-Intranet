@@ -284,7 +284,7 @@ local function mouse_click()
         local event, button, x, y = os.pullEvent("mouse_click")
         if x > 11 and y > 2 then
             x = x - 11
-            y = y - 2
+            y = y - 2 - scroll_offset
             
             --debug
             --write((y-1)*40+x)
