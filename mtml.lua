@@ -352,7 +352,7 @@ function command_from_self_closing_tag(tag, page)
     command.hr = tag.attributes.line or "-"
   elseif name == "textbox" then
     local textbox = {}
-    textbox.size = tag.attributes.size or 4
+    textbox.size = tonumber(tag.attributes.size) or 10
     textbox.id = tag.attributes.id
     command.textbox = textbox
   end
@@ -549,6 +549,24 @@ RENDER_FUNCTIONS = {
     fill_line_end_with(ctx, line)
   end,
   textbox = function(ctx, attributes)
+    local size = tonumber(atrributes.size) or 4
+    local id = atrributes.id
+
+    local old_text = ctx.current_text_color
+    local old_bg = ctx.current_bg_color
+
+    ctx.term.setTextColor(colors.green)
+    ctx.term.setBackgroundColor(colors.Gray)
+
+    add_button_pos(ctx, "textbox", id)
+
+    ctx.term.write("[")
+    ctx.term.write(string.rep(" ", size))
+    ctx.term.write("]")
+
+    add_button_pos(ctx, "textbox", nil)
+
+    ctx.term.setTextColor(old_text)
     
   end
 }
