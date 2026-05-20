@@ -62,6 +62,7 @@ function lex(mtml)
 
     local err = tokenize_chunk(lexer_state)
     if err then return nil, err end
+
     ::continue::
   end
 
@@ -92,15 +93,19 @@ function tokenize_tag(lexer_state)
   end
 
   skip_whitespace(lexer_state)
+
   local tag_name = next_word(lexer_state)
   if not tag_name then
     return lexer_state.error "Expected tag name"
   end
+
   tag.name = tag_name
 
   skip_whitespace(lexer_state)
+
   local err = tokenize_tag_attributes(lexer_state, tag)
   if err then return err end
+
   if tag.closing then
     if #tag.attributes > 0 then
       return lexer_state.error "Closing tags cannot have attributes"
@@ -109,6 +114,7 @@ function tokenize_tag(lexer_state)
   end
 
   skip_whitespace(lexer_state)
+
   if lexer_state.current_char() ~= ">" then
     return lexer_state.error "Invalid tag end"
   end
@@ -147,6 +153,7 @@ function tokenize_tag_attributes(lexer_state, tag)
     end
 
     skip_whitespace(lexer_state)
+
     if lexer_state.current_char() ~= "=" then
       return lexer_state.error "Expected '='"
     end
@@ -156,16 +163,20 @@ function tokenize_tag_attributes(lexer_state, tag)
     end
 
     skip_whitespace(lexer_state)
+
     local attribute_value, err = next_attribute_value(lexer_state)
     if err then return err end
+
     tag.attributes[attribute_name] = attribute_value
 
     skip_whitespace(lexer_state)
 
-    local current_char = lexer_state.current_char()
+    current_char = lexer_state.current_char()
 
     if current_char == ">" then return end
+
     if current_char == "/" then
+      tag.self_closing = true
       lexer_state.next()
       return
     end
@@ -177,35 +188,45 @@ function tokenize_tag_attributes(lexer_state, tag)
     lexer_state.next()
 
     skip_whitespace(lexer_state)
+
+    current_char = lexer_state.current_char()
   end
 end
 
 function next_attribute_value(lexer_state)
   local start = lexer_state.idx
   local current_char = lexer_state.current_char()
+
   if current_char:find("%d") then
     while lexer_state.current_char():find("%d") do
       lexer_state.next()
     end
+
     return lexer_state.mtml:sub(start, lexer_state.idx - 1)
+
   elseif current_char == "\"" then
     lexer_state.next()
-    while lexer_state:current_char() ~= "\"" do
+
+    while lexer_state.current_char() ~= "\"" do
       if not lexer_state.next() then
         return nil, lexer_state.error "Expected string literal end"
       end
     end
+
     lexer_state.next()
+
     return lexer_state.mtml:sub(start + 1, lexer_state.idx - 2)
   end
+
+  return nil, lexer_state.error "Expected attribute value"
 end
 
 function tokenize_chunk(lexer_state)
   local start = lexer_state.idx
+
   while lexer_state.idx <= lexer_state.len do
     if not lexer_state.current_char() then break end
     if lexer_state.current_char() == "<" then break end
-
     if lexer_state.current_char() == "\n" then break end
 
     lexer_state.next()
@@ -214,7 +235,7 @@ function tokenize_chunk(lexer_state)
   table.insert(lexer_state.tokens, {
     line = lexer_state.line_number,
     column = lexer_state.idx - lexer_state.previous_newline,
-    value = lexer_state.mtml:sub(start, lexer_state.idx - 1 )
+    value = lexer_state.mtml:sub(start, lexer_state.idx - 1)
   })
 end
 
@@ -224,18 +245,23 @@ function skip_whitespace(lexer_state)
       lexer_state.line_number = lexer_state.line_number + 1
       lexer_state.previous_newline = lexer_state.idx
     end
+
     lexer_state.next()
   end
 end
 
 function next_word(lexer_state)
   local start = lexer_state.idx
+
   while true do
     if not lexer_state.current_char() then break end
     if not lexer_state.current_char():find("%l") then break end
+
     lexer_state.next()
   end
+
   if start == lexer_state.idx then return nil end
+
   return lexer_state.mtml:sub(start, lexer_state.idx - 1)
 end
 
@@ -249,11 +275,13 @@ function parse(tokens)
   }
 
   local tag_name_stack = {}
+
   local tag_stacks = {
     text_color = array { "white" },
     bg_color   = array { "black" },
     link       = array {},
     button     = array {},
+    textbox    = array {},
     nowrap     = 0,
   }
 
@@ -262,6 +290,7 @@ function parse(tokens)
     bg_color = "black",
     link = false,
     button = false,
+    textbox = false,
     nowrap = false,
   }
 
@@ -285,31 +314,44 @@ function parse(tokens)
 
     local tag = token_value
     local command
-
     local prefix_text = ""
 
     -- Parse tag
     if tag.self_closing then
       local command, err = command_from_self_closing_tag(tag, page)
       if err then return nil, err end
+
       page.content:push(command)
+
       goto continue
+
     elseif tag.closing then
-      if table.remove(tag_name_stack).name ~= tag.name then
+      local opened_tag = table.remove(tag_name_stack)
+
+      if not opened_tag then
         return nil, parser_error(token, "Missing opening tag")
       end
+
+      if opened_tag.name ~= tag.name then
+        return nil, parser_error(token, "Missing opening tag")
+      end
+
       local err = close_tag(tag_stacks, tag)
       if err then return nil, err end
+
       command = generate_command(tag_stacks)
+
     else
       table.insert(tag_name_stack, {
         name = tag.name,
         line = token.line,
         column = token.column,
       })
+
       local err
       prefix_text, err = open_tag(tag_stacks, tag, page.content)
       if err then return nil, err end
+
       command = generate_command(tag_stacks)
     end
 
@@ -321,6 +363,7 @@ function parse(tokens)
 
   -- Check for unclosed tag
   local leftover_tag = table.remove(tag_name_stack)
+
   if leftover_tag then
     local err_msg = "[" .. leftover_tag.line .. ":" .. leftover_tag.column .. "] Unclosed tag"
     return nil, err_msg
@@ -334,6 +377,7 @@ function parse(tokens)
 
   -- Remove trailing commands
   local last_element = page.content:last()
+
   if type(last_element) == "table" then
     if not last_element.hr then
       page.content:pop()
@@ -348,61 +392,95 @@ end
 function command_from_self_closing_tag(tag, page)
   local name = tag.name
   local command = {}
+
   if name == "hr" then
     command.hr = tag.attributes.line or "-"
-  elseif name == "textbox" then
-    local textbox = {}
-    textbox.size = tonumber(tag.attributes.size) or 10
-    textbox.id = tag.attributes.id
-    command.textbox = textbox
+
+  else
+    return nil, "Unknown self-closing tag: " .. name
   end
+
   return command, nil
 end
 
 function open_tag(tag_stacks, token_value, page_content)
   local name = token_value.name
+
   if name == "color" then
     local text_color = tag_stacks.text_color:last()
     local bg_color = tag_stacks.bg_color:last()
+
     if token_value.attributes.text then
       text_color = token_value.attributes.text
     end
+
     if token_value.attributes.bg then
       bg_color = token_value.attributes.bg
     end
+
     tag_stacks.text_color:push(text_color)
     tag_stacks.bg_color:push(bg_color)
+
+    return ""
+
   elseif name == "link" then
     tag_stacks.link:push(token_value.attributes.src)
     tag_stacks.text_color:push("blue")
+
     return string.char(187)
+
   elseif name == "button" then
     tag_stacks.button:push(token_value.attributes.id)
     tag_stacks.text_color:push("yellow")
+
     return string.char(30)
+
+  elseif name == "textbox" then
+    tag_stacks.textbox:push(token_value.attributes.id)
+    tag_stacks.text_color:push("green")
+
+    return "<["
+
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap + 1
+
+    return ""
+
+  else
+    return nil, "Unknown tag: " .. name
   end
 end
 
 function close_tag(tag_stacks, token_value)
   local name = token_value.name
+
   if name == "color" then
     tag_stacks.text_color:pop()
     tag_stacks.bg_color:pop()
+
   elseif name == "link" then
     tag_stacks.link:pop()
     tag_stacks.text_color:pop()
+
   elseif name == "button" then
     tag_stacks.button:pop()
     tag_stacks.text_color:pop()
+
+  elseif name == "textbox" then
+    tag_stacks.textbox:pop()
+    tag_stacks.text_color:pop()
+
   elseif name == "nowrap" then
     tag_stacks.nowrap = tag_stacks.nowrap - 1
+
+  else
+    return "Unknown closing tag: " .. name
   end
 end
 
 function append_string(page_content, string)
   if string == "" then return end
+
   if
     type(page_content:last()) == "string" and
     page_content:last() ~= "\n"
@@ -410,6 +488,7 @@ function append_string(page_content, string)
     page_content[page_content.len] = page_content:last() .. string
     return
   end
+
   page_content:push(string)
 end
 
@@ -422,9 +501,11 @@ function append_command(page_content, command, previous_command)
     if previous_command[k] == v then
       goto continue
     end
+
     command_is_empty = false
     trimmed_command[k] = v
     previous_command[k] = v
+
     ::continue::
   end
 
@@ -434,6 +515,7 @@ function append_command(page_content, command, previous_command)
     for k, v in pairs(trimmed_command) do
       last_element[k] = v
     end
+
     return
   end
 
@@ -442,9 +524,11 @@ end
 
 function generate_command(tag_stacks)
   local command = {}
+
   command.nowrap = tag_stacks.nowrap > 0
   command.link = tag_stacks.link:last() or false
   command.button = tag_stacks.button:last() or false
+  command.textbox = tag_stacks.textbox:last() or false
   command.text_color = tag_stacks.text_color:last()
   command.bg_color = tag_stacks.bg_color:last()
 
@@ -457,9 +541,11 @@ end
 
 function shallow_copy_table(original)
   local copy = {}
+
   for k, v in pairs(original) do
     copy[k] = v
   end
+
   return copy
 end
 
@@ -472,8 +558,9 @@ end
 ---@return table page
 function mod.update_page(terminal, page, data)
   local updated_page = {}
+
   for index, value in ipairs(page) do
-    
+
   end
 end
 
@@ -495,10 +582,12 @@ function mod.render_page(terminal, page, scroll)
     nowrap = false,
     buttons = array {},
   }
+
   ctx.width, ctx.heigth = terminal.getSize()
-  
+
   if scroll < 1 then scroll = 1 end
   if scroll > page.line_count then scroll = page.line_count end
+
   local start_idx = page.newlines[scroll]
   local end_idx = page.newlines[(scroll + ctx.heigth)] or page.content.len
   local is_first_iteration = true
@@ -507,7 +596,7 @@ function mod.render_page(terminal, page, scroll)
   terminal.setTextColor(colors.white)
   terminal.setCursorPos(1, 1)
   terminal.clear()
-  
+
   while start_idx <= end_idx do
     local element = page.content[start_idx]
 
@@ -524,6 +613,7 @@ function mod.render_page(terminal, page, scroll)
   end
 
   ctx.buttons.screen_width = ctx.width
+
   return ctx.buttons
 end
 
@@ -533,51 +623,36 @@ RENDER_FUNCTIONS = {
   text_color = function(ctx, color)
     ctx.term.setTextColor(colors[color] or colors.black)
   end,
+
   bg_color = function(ctx, color)
     ctx.term.setBackgroundColor(colors[color] or colors.white)
   end,
+
   nowrap = function(ctx, is_enabled)
     ctx.nowrap = is_enabled
   end,
+
   link = function(ctx, src)
     add_button_pos(ctx, "link", src)
   end,
+
   button = function(ctx, id)
     add_button_pos(ctx, "button", id)
   end,
+
+  textbox = function(ctx, id)
+    add_button_pos(ctx, "textbox", id)
+  end,
+
   hr = function(ctx, line)
     fill_line_end_with(ctx, line)
   end,
-  textbox = function(ctx, attributes)
-    local size = tonumber(atrributes.size) or 4
-    local id = atrributes.id
-
-    local old_text = ctx.current_text_color
-    local old_bg = ctx.current_bg_color
-
-    ctx.term.setTextColor(colors.green)
-    ctx.term.setBackgroundColor(colors.Gray)
-
-    add_button_pos(ctx, "textbox", id)
-
-    ctx.term.write("[")
-    ctx.term.write(string.rep(" ", size))
-    ctx.term.write("]")
-
-    add_button_pos(ctx, "textbox", nil)
-
-    ctx.term.setTextColor(old_text)
-    
-  end
 }
-
-function render_text_box()
-
-end
 
 function get_cursor_idx(terminal)
   local x, y = terminal.getCursorPos()
   local width, _ = terminal.getSize()
+
   return (y - 1) * width + x
 end
 
@@ -589,13 +664,14 @@ function render_text(ctx, text)
     return
   end
 
-  --TODO Add word wrapping
+  -- TODO Add word wrapping
   ctx.term.write(text)
 end
 
 function fill_line_end_with(ctx, line)
   local idx, _ = ctx.term.getCursorPos()
   local len = #line
+
   while idx <= ctx.width do
     ctx.term.write(line)
     idx = idx + len
@@ -605,7 +681,9 @@ end
 function add_button_pos(ctx, name, value)
   local last_button = ctx.buttons:last() or {}
   local pos = get_cursor_idx(ctx.term)
+
   value = value or nil
+
   if last_button.pos == pos then
     last_button[name] = value
     return
@@ -614,6 +692,7 @@ function add_button_pos(ctx, name, value)
   local new_button = shallow_copy_table(last_button)
   new_button[name] = value
   new_button.pos = pos
+
   ctx.buttons:push(new_button)
 end
 
@@ -627,10 +706,15 @@ end
 function mod.get_button_at(buttons, click_x, click_y)
   local idx =  (click_y - 1) * buttons.screen_width + click_x
   local found_button = {}
+
   for _, button in ipairs(buttons) do
-    if idx >= button.pos then found_button = shallow_copy_table(button) end
+    if idx >= button.pos then
+      found_button = shallow_copy_table(button)
+    end
   end
+
   found_button.pos = nil
+
   for _, _ in pairs(found_button) do
     return found_button
   end
