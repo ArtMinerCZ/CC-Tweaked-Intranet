@@ -17,7 +17,7 @@ local browsing_history = {" Browsing history:"}
 local buttons = nil
 local site_id = nil
  
-scroll_offset = 0
+scroll_offset = 1
  
 local function send_message(id, type, message)
     if (id == nil) or (not id) then
@@ -284,7 +284,7 @@ local function mouse_click()
         local event, button, x, y = os.pullEvent("mouse_click")
         if x > 11 and y > 2 then
             x = x - 11
-            y = y - 2 - scroll_offset
+            y = y - 2 + scroll_offset - 1
             
             --debug
             --write((y-1)*40+x)
