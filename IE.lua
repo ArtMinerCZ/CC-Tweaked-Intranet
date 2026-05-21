@@ -302,8 +302,8 @@ local function mouse_click()
                     term.setCursorPos(px,py)
      
                     local textbox_input = read()
-                    
-                    send_message(site_id, "textbox_input", textbox_input)
+                    local payload = {pressed.textbox, textbox_input}
+                    send_message(site_id, "textbox_input", payload)
                     print(textbox_input)
                     
                 end
