@@ -170,8 +170,21 @@ while true do
         print(id, message[2])
 	elseif message[1] == "textbox_input" then
 		local textbox_input = message[2]
+		local input_id = textbox_input[1]
+		local input_value = textbox_input[2]
 			
 		print(id, textbox_input[1], textbox_input[2])
+
+		local addon = addon_inputs[input_id]
+
+		if addon and addon.receive_input then
+				addon_output = addon.receive_input(id, input_id, input_value)
+
+				if type(addon_output) == "string" then
+					rednet.send(id, addon_output, "intranet")
+				end
+
+		
 	end
 end
 end
