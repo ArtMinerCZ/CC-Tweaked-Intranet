@@ -281,10 +281,10 @@ end
 
 local function mouse_click()
     while true do
-        local event, button, x, y = os.pullEvent("mouse_click")
-        if x > 11 and y > 2 then
-            x = x - 11
-            y = y - 2 + scroll_offset - 1
+        local event, button, px, py = os.pullEvent("mouse_click")
+        if px > 11 and py > 2 then
+            x = px - 11
+            y = py - 2 + scroll_offset - 1
             
             --debug
             --write((y-1)*40+x)
@@ -299,7 +299,7 @@ local function mouse_click()
                     address_bar(pressed.link)
                 elseif pressed and pressed.textbox ~= nil then
                     
-                    term.setCursorPos(x,y)
+                    term.setCursorPos(px,py)
      
                     local textbox_input = read()
                     
