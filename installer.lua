@@ -2,9 +2,9 @@ if not fs.exists("explorer") then
     fs.makeDir("explorer")
 end
 
-if not fs.exists("explorer/favorites.lua") then
-    fs.open("explorer/favorites.lua", "r")
-end
+
+fs.open("explorer/favorites.lua", "r")
+
 
 if not fs.exists("basalt.lua") then
     shell.run("wget run https://basalt.madefor.cc/2.5/install.lua")
