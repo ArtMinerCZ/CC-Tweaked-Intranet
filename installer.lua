@@ -3,7 +3,7 @@ if not fs.exists("explorer") then
 end
 
 if not fs.exists("explorer/favorites.lua") then
-    fs.makeDir("explorer/favorites.lua")
+    fs.open("explorer/favorites.lua", "r")
 end
 
 if not fs.exists("basalt.lua") then
