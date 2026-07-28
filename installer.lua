@@ -11,5 +11,5 @@ shell.run("wget https://raw.githubusercontent.com/ArtMinerCZ/CC-Tweaked-Intranet
 
 shell.run("wget https://raw.githubusercontent.com/ArtMinerCZ/CC-Tweaked-Intranet/refs/heads/main/explorer/render.lua explorer/render.lua")
 
-shell.run("wget https://raw.githubusercontent.com/ArtMinerCZ/CC-Tweaked-Intranet/refs/heads/main/explorer/IntranetExplorer.lua explorer/IntranetExplorer.lua")
+shell.run("wget https://raw.githubusercontent.com/ArtMinerCZ/CC-Tweaked-Intranet/refs/heads/main/explorer/IntranetExplorer.lua IntranetExplorer.lua")
 
