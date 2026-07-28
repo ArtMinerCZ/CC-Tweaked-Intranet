@@ -187,7 +187,7 @@ do
 
     if type(data) == "table" then
         favorites = data
-        favoritesDropdown:setSize(20, #favorites)
+        favoritesDropdown:setSize(20, #favorites + 1)
     end
 end
 
