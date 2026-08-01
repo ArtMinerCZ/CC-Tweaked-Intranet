@@ -64,7 +64,7 @@ wget run https://raw.githubusercontent.com/Andre601/CC-Tweaked-Intranet/refs/hea
 ```
 
 > [!NOTE]
-> Intranet Explorer uses Basalt v5.2 for the UI and you may be required to go through its installation process. Simply accept the recommended defaults for the installation of it.
+> Intranet Explorer uses Basalt v2.5 for the UI and you may be required to go through its installation process. Simply accept the recommended defaults for the installation of it.
 
 After that, run `IntranetExplorer` to start the Explorer. If you want it to be loaded whenever the computer starts, rename the `IntranetExplorer.lua` file to `startup.lua` or move it to a `startup/` directory.
 
